@@ -13,9 +13,27 @@ for the full protocol write-up.
 - `anker_ble/` — Python protocol library (decode + monitor with auto-reconnect)
 - `cli.py` — standalone CLI monitor
 - `custom_components/anker_solix_ble/` — Home Assistant integration
+- `scripts/seed-bluez-device.sh` — make BlueZ know a standby (non-advertising)
+  station so connect-by-address works
 - `udev/` — udev rule to stop USB dongles from autosuspend-dropping the link
 - `docs/PROTOCOL.md` — reverse-engineered BLE protocol (GATT, field map,
-  checksum, keep-alive notes)
+  checksum, keep-alive + standby wake notes)
+
+## Linux / BlueZ setup (do this first)
+
+The 757/F1200 in standby stops advertising but keeps a low-duty radio listen
+window, so it only answers **directed connect requests by address**. Phones
+do this natively; BlueZ refuses to connect to an address it has no entry for.
+One-time setup makes the station permanently known to BlueZ:
+
+```bash
+sudo scripts/seed-bluez-device.sh E8:EE:CC:00:00:01 757_PowerHouse
+```
+
+This writes the device entry into `/var/lib/bluetooth/` and restarts
+bluetoothd. It survives reboots. Without it you will see
+`Device ... not available` / `BleakDeviceNotFoundError` while the unit is in
+standby (it does not advertise, so scanning cannot find it either).
 
 ## Quick start (CLI)
 
@@ -66,10 +84,13 @@ sudo udevadm control --reload-rules
 - GATT service `0159f5da-0000-1000-8000-00805f9b34fb`
 - Telemetry notify char `00008888-...` — 94-byte packets at ~2 Hz,
   **no pairing, no encryption**
-- Command char `00007777-...` — read once at connect; no keep-alive writes
+- Command char `00007777-...` — read once at connect; the 10-byte wake query
+  (`08 EE 00 00 00 01 01 0A 00 02`) is written on connect and re-sent every
+  30 s to wake a standby unit / keep the BMS reporting
 - Checksum: `sum(packet[:-1]) % 256`
-- Keep-alive is the notification stream itself; the failure mode is host-side
-  USB power management (see udev rule)
+- Keep-alive is the notification stream itself; from standby the wake query
+  is required (see docs/PROTOCOL.md); the host-side failure mode is USB
+  power management (see udev rule)
 
 This is a **different** protocol from the newer SOLIX F2000/F2600/F3800
 (`8c8500xx` + ECDH/AES) covered by

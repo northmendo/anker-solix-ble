@@ -25,6 +25,7 @@ import logging
 from collections.abc import AsyncIterator
 
 from bleak import BleakClient, BleakScanner
+from bleak.exc import BleakDeviceNotFoundError
 
 from .protocol import CHAR_COMMAND, CHAR_NOTIFY, SERVICE_UUID, Telemetry, WAKE_QUERY, decode
 
@@ -55,6 +56,7 @@ class AnkerMonitor:
         self.stale_after = stale_after
         self.retry_delay = retry_delay
         self._last_packet = 0.0
+        self._latest: Telemetry | None = None
         self._stop = False
 
     async def stream(self) -> AsyncIterator[Telemetry]:
@@ -76,6 +78,18 @@ class AnkerMonitor:
         try:
             client = BleakClient(self.address, timeout=20.0)
             await client.connect()
+        except BleakDeviceNotFoundError:
+            # BlueZ refuses connect-by-address for devices it has no entry
+            # for. If the unit is in standby it does not advertise, so a
+            # scan cannot find it either. Fix: seed BlueZ's device store
+            # once (scripts/seed-bluez-device.sh). After seeding, connect-
+            # by-address issues a directed LE connection that succeeds when
+            # the unit's radio is in its low-duty listen window.
+            _LOGGER.warning(
+                "device %s unknown to BlueZ; run scripts/seed-bluez-device.sh "
+                "%s to seed it (see README), retrying", self.address, self.address
+            )
+            return
         except Exception:
             # Fall back to discovery (required on some adapters, and picks up
             # the D-Bus path on Linux when a cached device is found).

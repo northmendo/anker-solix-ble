@@ -1,7 +1,7 @@
 {
   "domain": "anker_solix_ble",
   "name": "Anker SOLIX BLE",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "config_flow": true,
   "documentation": "https://github.com/northmendo/anker-solix-ble",
   "requirements": ["bleak>=0.21.0"],

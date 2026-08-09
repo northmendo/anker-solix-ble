@@ -80,6 +80,18 @@ status/keep-alive ACK from the device.
 - The monitor does all three: it polls the query every 30 s on an active
   connection, and it retries connect-by-address forever (with scan fallback)
   when the unit is asleep.
+- **Linux/BlueZ gotcha — the device must be known to BlueZ first.** Phones
+  can direct-connect to any address, but BlueZ refuses to connect to an
+  address it has no device entry for (`Device E8:EE:CC:00:00:01 not
+  available` from `bluetoothctl`, `BleakDeviceNotFoundError` from bleak).
+  Standby units do not advertise, so a scan cannot re-discover them either.
+  Fix: seed BlueZ's device store once with
+  [`scripts/seed-bluez-device.sh`](../scripts/seed-bluez-device.sh) (writes
+  `/var/lib/bluetooth/<adapter>/<MAC>/info` with `SupportedTechnologies=LE`,
+  `AddressType=public`, `Trusted=true`, then restarts bluetoothd). Verified
+  live 2026-08-09: after seeding, connect-by-address issues a real directed
+  LE connection and the unit answers in its listen window (`Connected: yes`).
+  The seed survives reboots; re-run it only if bluetoothd's store is wiped.
 - **The realistic failure mode is on the host side**, not the device: USB
   adapters with power management (CSR 8510 = TP-Link UB400) go into
   autosuspend after ~2 s idle and drop the connection. Fix is a udev rule

@@ -8,9 +8,9 @@ notify characteristic once subscribed.
 GATT layout (NOT the newer 8c8500xx F2000/F3800 protocol):
   Service: 0159f5da-0000-1000-8000-00805f9b34fb
   Notify : 00008888-0000-1000-8000-00805f9b34fb  (94-byte telemetry)
-  Write  : 00007777-0000-1000-8000-00805f9b34fb  (read once at connect for
-           status; no periodic keep-alive writes needed - the notification
-           stream itself keeps the BLE link alive)
+  Write  : 00007777-0000-1000-8000-00805f9b34fb  (status on read; write the
+           WAKE_QUERY on connect and every WAKE_POLL_INTERVAL to wake a
+           standby unit / keep the BMS reporting while idle)
 """
 from __future__ import annotations
 
