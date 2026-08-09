@@ -1,8 +1,11 @@
 """Coordinator: keeps the BLE link to the Anker station alive and publishes
 the latest telemetry to Home Assistant sensors.
 
-Runs AnkerMonitor as a background task. The BLE notification stream at ~2 Hz
-is the keep-alive; the coordinator restarts the monitor if the link drops.
+Runs AnkerMonitor as a background task. The monitor writes the 10-byte wake
+query to the command characteristic every 30 s (WAKE_POLL_INTERVAL) — that is
+how the official app wakes a standby unit and keeps the BMS reporting — and
+the ~2 Hz notification stream keeps the link alive. The coordinator restarts
+the monitor if the link drops.
 """
 from __future__ import annotations
 

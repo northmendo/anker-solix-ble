@@ -59,23 +59,36 @@ header prefix (`09 ff 00 00 01`), same checksum scheme (sum % 256). Not
 decoded; the monitor ignores it. Its low frequency suggests a periodic
 status/keep-alive ACK from the device.
 
-## Keep-alive
+## Keep-alive and waking from standby
 
-- **The notification stream itself is the keep-alive.** Once subscribed, the
-  device pushes telemetry at ~2 Hz, which keeps the BLE link alive at the
-  L2CAP level. No periodic writes to `00007777` are needed for monitoring
-  (confirmed: the 767 PowerHouse decoder [BerndAmend/anker_powerhouse_767]
-  reads `7777` once at connect and never writes during the session).
+- **The notification stream itself is the keep-alive during a session.** Once
+  subscribed, the device pushes telemetry at ~2 Hz, which keeps the BLE link
+  alive at the L2CAP level.
+- **How the official app "wakes" a standby unit** (verified 2026-08-09 from
+  the F2000/767 HA integration [yun-s-oh/ha-anker-solix-f2000], which mimics
+  the app, and the commented `0x08/0xEE` write in
+  [BerndAmend/anker_powerhouse_767]):
+  1. Retry a **connect-by-address** until the unit accepts. In standby the
+     unit stops advertising but keeps a low-duty radio listen window, so a
+     connect attempt eventually lands — "it turns off bluetooth eventually,
+     but not that fast."
+  2. After connecting, **write the 10-byte wake/status query** to `00007777`
+     (write, no response): `08 EE 00 00 00 01 01 0A 00 02`. This forces the
+     BMS to push telemetry even when the unit is idle.
+  3. **Re-send the query periodically** (the F2000 integration uses 30 s) so
+     the BMS keeps reporting and the unit does not fall back into standby.
+- The monitor does all three: it polls the query every 30 s on an active
+  connection, and it retries connect-by-address forever (with scan fallback)
+  when the unit is asleep.
 - **The realistic failure mode is on the host side**, not the device: USB
   adapters with power management (CSR 8510 = TP-Link UB400) go into
   autosuspend after ~2 s idle and drop the connection. Fix is a udev rule
   pinning `power/control=on` (see `udev/90-ub400-nosuspend.rules`).
-- **The station must be awake.** When the unit enters standby (no load, no
-  display interaction for a while), it stops advertising *and* stops
-  answering direct connects (`BleakDeviceNotFoundError`). During earlier
-  captures it stayed reachable because it was actively powering a server
-  (~295 W out). The monitor retries indefinitely; wake the unit (display
-  button, or apply a load) and it reconnects on the next scan.
+- **The 15-byte frame is the BMS's response to the wake query.** The F2000
+  integration defines `HEADER_PREFIX = 09 FF` for its response frames; our
+  15-byte frames (`09 ff 00 00 01 ...`) share that prefix and the same
+  checksum scheme. The monitor ignores them (telemetry stays on the 94-byte
+  stream), but their presence confirms the wake query path is live.
 - On the test box test box: front USB ports dropped the dongle within 5 s
   (likely platform-managed), rear ports held with the udev rule in place.
 - Adapter-agnostic guidance: use any BlueZ-compatible adapter; the protocol
@@ -84,6 +97,10 @@ status/keep-alive ACK from the device.
 
 ## References
 
+- [yun-s-oh/ha-anker-solix-f2000](https://github.com/yun-s-oh/ha-anker-solix-f2000)
+  — F2000/767 HA integration; source of the `08 EE ... 02` wake query, the
+  30 s poll cadence, and the standby ("deep standby disables passive
+  broadcasts") behavior. Same 7777/8888 UUIDs and header prefix as ours.
 - [BerndAmend/anker_powerhouse_767](https://github.com/BerndAmend/anker_powerhouse_767)
   — closest sibling (767/F2000), TypeScript decoder, same 7777/8888 style
 - [flip-dots/SolixBLE](https://github.com/flip-dots/SolixBLE) — F2000/F2600/F3800

@@ -4,9 +4,14 @@ Maintains the connection to the notify characteristic and yields decoded
 telemetry. Includes automatic reconnect with backoff.
 
 Keep-alive notes (documented in docs/PROTOCOL.md):
-- The device itself pushes telemetry at ~2 Hz once subscribed. This keeps the
-  BLE link alive at the L2CAP level; no periodic writes to the command
-  characteristic are required for monitoring.
+- After connecting, the monitor writes the wake/status query (WAKE_QUERY) to
+  the command characteristic. This is what the official Anker app does to
+  wake a unit that has dropped into standby: the unit keeps a low-duty radio
+  listen window in standby (so it answers connect attempts "eventually, but
+  not that fast"), and the query forces the BMS to push telemetry even when
+  idle. The query is re-sent periodically (WAKE_POLL_INTERVAL).
+- The device itself pushes telemetry at ~2 Hz once subscribed, which keeps the
+  BLE link alive at the L2CAP level in normal operation.
 - The real-world failure mode is the USB dongle going into autosuspend
   (CSR 8510 / TP-Link UB400). Fix: udev rule pinning power/control=on
   (see udev/90-ub400-nosuspend.rules).
@@ -21,9 +26,13 @@ from collections.abc import AsyncIterator
 
 from bleak import BleakClient, BleakScanner
 
-from .protocol import CHAR_NOTIFY, SERVICE_UUID, Telemetry, decode
+from .protocol import CHAR_COMMAND, CHAR_NOTIFY, SERVICE_UUID, Telemetry, WAKE_QUERY, decode
 
 _LOGGER = logging.getLogger(__name__)
+
+# How often to re-send the wake query to a connected unit. Matches the
+# F2000/767 integration's DEFAULT_POLL_INTERVAL of 30 s.
+WAKE_POLL_INTERVAL = 30.0
 
 
 class AnkerMonitor:
@@ -89,6 +98,22 @@ class AnkerMonitor:
 
             await client.start_notify(CHAR_NOTIFY, on_notify)
             self._latest = None
+
+            # Wake the unit / keep the BMS reporting, exactly like the
+            # official app: write the status query after connect, then
+            # re-send it periodically in case the unit drops into standby.
+            async def _wake_pump() -> None:
+                while True:
+                    try:
+                        await client.write_gatt_char(CHAR_COMMAND, WAKE_QUERY, response=False)
+                    except Exception:  # noqa: BLE001 - link may be gone; main loop handles it
+                        _LOGGER.debug("wake query write failed", exc_info=True)
+                        return
+                    await asyncio.sleep(WAKE_POLL_INTERVAL)
+
+            await client.write_gatt_char(CHAR_COMMAND, WAKE_QUERY, response=False)
+            wake_task = asyncio.create_task(_wake_pump())
+
             try:
                 while True:
                     await asyncio.sleep(0.25)
@@ -101,6 +126,7 @@ class AnkerMonitor:
                                         now - self._last_packet)
                         break
             finally:
+                wake_task.cancel()
                 await client.stop_notify(CHAR_NOTIFY)
         finally:
             await client.disconnect()

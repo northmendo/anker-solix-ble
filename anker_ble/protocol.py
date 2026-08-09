@@ -23,6 +23,14 @@ CHAR_COMMAND = "00007777-0000-1000-8000-00805f9b34fb"
 
 PACKET_LEN = 94
 
+# Wake/status query written to CHAR_COMMAND to force the BMS to report
+# telemetry even when the unit is idle or in standby. Identified from the
+# F2000/767 HA integration (yun-s-oh/ha-anker-solix-f2000) and the commented
+# 0x08/0xEE write in BerndAmend/anker_powerhouse_767: the official app writes
+# this after connecting, which is what "wakes" the unit. Poll it periodically
+# (see monitor.WAKE_POLL_INTERVAL) to keep the BMS pushing updates while idle.
+WAKE_QUERY = bytes([0x08, 0xEE, 0x00, 0x00, 0x00, 0x01, 0x01, 0x0A, 0x00, 0x02])
+
 # Offsets verified against the unit display 2026-08-09.
 # u16 values are little-endian.
 _OFF_AC_OUTPUT = 21

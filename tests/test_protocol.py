@@ -8,7 +8,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from anker_ble import decode
+from anker_ble import WAKE_QUERY, decode, checksum
+
+
+def test_wake_query_checksum() -> None:
+    """The wake query's last byte is the same sum % 256 checksum."""
+    assert len(WAKE_QUERY) == 10
+    assert checksum(WAKE_QUERY) == WAKE_QUERY[-1] == 0x02
+    print(f"wake query checksum ok: {WAKE_QUERY.hex()}")
+
+
+def test_wake_query_prefix() -> None:
+    """Wake query starts with the 0x08 0xEE command family seen in the 767 decoder."""
+    assert WAKE_QUERY[:2] == bytes([0x08, 0xEE])
 
 
 def decode_file(path: str) -> tuple[int, int, int, int, int]:
