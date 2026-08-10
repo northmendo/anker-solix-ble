@@ -1,11 +1,18 @@
 {
   "domain": "anker_solix_ble",
   "name": "Anker SOLIX BLE",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "config_flow": true,
   "documentation": "https://github.com/northmendo/anker-solix-ble",
-  "requirements": ["bleak>=0.21.0"],
-  "dependencies": [],
-  "codeowners": ["@northmendo"],
+  "requirements": [
+    "bleak>=0.21.0",
+    "bleak-retry-connector>=3.0.0"
+  ],
+  "dependencies": [
+    "bluetooth"
+  ],
+  "codeowners": [
+    "@northmendo"
+  ],
   "iot_class": "local_push"
 }

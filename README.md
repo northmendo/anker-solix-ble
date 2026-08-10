@@ -12,18 +12,22 @@ for the full protocol write-up.
 
 - `anker_ble/` — Python protocol library (decode + monitor with auto-reconnect)
 - `cli.py` — standalone CLI monitor
-- `custom_components/anker_solix_ble/` — Home Assistant integration
+- `custom_components/anker_solix_ble/` — Home Assistant integration (vendors
+  the protocol lib; uses HA's native Bluetooth integration)
 - `scripts/seed-bluez-device.sh` — make BlueZ know a standby (non-advertising)
-  station so connect-by-address works
+  station so connect-by-address works (CLI path only)
 - `udev/` — udev rule to stop USB dongles from autosuspend-dropping the link
 - `docs/PROTOCOL.md` — reverse-engineered BLE protocol (GATT, field map,
   checksum, keep-alive + standby wake notes)
+- `docs/ARCHITECTURE.md` — transport design (CLI vs HA), packaging, future
+  server-side proxy
 
 ## Linux / BlueZ setup (do this first)
 
 The 757/F1200 in standby stops advertising but keeps a low-duty radio listen
 window, so it only answers **directed connect requests by address**. Phones
 do this natively; BlueZ refuses to connect to an address it has no entry for.
+This affects the **CLI / standalone** path (and a raw-BleakClient HA setup).
 One-time setup makes the station permanently known to BlueZ:
 
 ```bash
@@ -34,6 +38,10 @@ This writes the device entry into `/var/lib/bluetooth/` and restarts
 bluetoothd. It survives reboots. Without it you will see
 `Device ... not available` / `BleakDeviceNotFoundError` while the unit is in
 standby (it does not advertise, so scanning cannot find it either).
+
+**The HA integration does not need this step**: it connects through HA's
+own Bluetooth integration (see docs/ARCHITECTURE.md), which keeps scanning
+and resolves the device by address once it has ever been seen.
 
 ## Quick start (CLI)
 
@@ -63,11 +71,12 @@ Sensors: Battery (%), AC output (W), Total output (W), AC input (W),
 DC input (W), Net power (W). All update at ~2 Hz over BLE, enabling
 automations on power thresholds, SOC, etc.
 
-Requires bluez on the HA host:
+Control: a **Charge rate** select entity (100 W / 200 W, optimistic) writes
+the AC charge rate to the unit — verified live.
 
-```bash
-sudo apt install bluez
-```
+Requires HA's Bluetooth integration to be enabled and a working BLE adapter
+on the HA host. The component refuses to start with a clear error if no
+adapter is detected.
 
 ### If your Bluetooth adapter drops the connection (USB dongle)
 
@@ -105,10 +114,11 @@ restores ~420W). Other control payloads (AC output toggle, light, etc.) are
 not yet reverse-engineered — the command characteristic accepts writes (same
 `08 EE` family) but their register map is undocumented; contributions welcome.
 
-Home Assistant integration: the component is written and compiles, and the
-underlying monitor is live-verified, but the HA integration itself has not
-been exercised end-to-end on a running HA instance by the author — please
-test in a staging install before relying on it.
+Home Assistant integration: written against HA's native Bluetooth APIs
+(`bluetooth.async_ble_device_from_address` + `bleak_retry_connector`),
+compiles and unit-tested for vendored-lib sync, but the HA component itself
+has not been exercised end-to-end on a running HA instance by the author —
+please test in a staging install before relying on it.
 
 ## Disclaimer
 
