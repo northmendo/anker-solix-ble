@@ -88,13 +88,12 @@ def main() -> int:
         if opcode not in OPCODE_NAMES:
             continue
         handle = struct.unpack_from("<H", att, 1)[0]
-        if handle != CMD_HANDLE:
-            continue
         value = att[3:]
         found += 1
+        marker = "  <== CMD" if handle == CMD_HANDLE else ""
         print(
             f"{ts_us / 1_000_000:.6f}  {OPCODE_NAMES[opcode]:9s}  "
-            f"handle 0x{handle:04x}  {len(value)}B  {value.hex()}"
+            f"handle 0x{handle:04x}  {len(value)}B  {value.hex()}{marker}"
         )
     if found == 0:
         print("no writes to 0x7777 found in capture", file=sys.stderr)
