@@ -82,14 +82,27 @@ class AnkerSensor(CoordinatorEntity[AnkerDataUpdateCoordinator], SensorEntity):
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_unique_id = f"{entry.entry_id}-{description.key}"
+        self._address = entry.data["address"]
+        # Stable identity: key off the MAC (the config-entry unique_id),
+        # not entry.entry_id, so re-adding the integration does not orphan
+        # the device or create duplicate entities.
+        self._attr_unique_id = f"{self._address}-{description.key}"
         self._attr_name = f"Anker {entry.data.get('name', 'Power Station')} {description.name}"
         self._attr_device_info = {
-            "identifiers": {("anker_solix_ble", entry.entry_id)},
+            "identifiers": {("anker_solix_ble", self._address)},
             "name": entry.data.get("name", "Anker Power Station"),
             "manufacturer": "Anker",
             "model": entry.data.get("model", "SOLIX F1200 / 757 PowerHouse"),
         }
+
+    @property
+    def available(self) -> bool:
+        """Entity is available only while the coordinator has fresh data.
+
+        Without this, a unit that dropped to standby leaves the sensor
+        frozen on its last value and HA treats it as current.
+        """
+        return self.coordinator.is_fresh()
 
     @property
     def native_value(self):

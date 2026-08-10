@@ -48,6 +48,7 @@ class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
         self._task: asyncio.Task | None = None
         self._latest: Telemetry | None = None
         self._current_client: BleakClient | None = None
+        self._last_packet: float = 0.0
         self.data = None
 
     async def _get_client(self) -> BleakClient | None:
@@ -104,6 +105,7 @@ class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
             async for t in self._monitor.stream():
                 self._latest = t
                 self.data = t
+                self._last_packet = self.hass.loop.time()
                 self.async_set_updated_data(t)
                 await asyncio.sleep(0)
         except asyncio.CancelledError:
@@ -111,6 +113,19 @@ class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
         except Exception as exc:  # noqa: BLE001
             _LOGGER.exception("monitor crashed")
             raise UpdateFailed(f"BLE monitor failed: {exc}") from exc
+
+    def is_fresh(self, grace: float = 5.0) -> bool:
+        """True while a telemetry packet arrived recently enough to trust.
+
+        The unit pushes ~2 Hz when connected, so anything older than
+        ``stale_after`` plus a small grace means the link is down or the
+        unit went to standby: report unavailable instead of stale values.
+        """
+        if self._last_packet <= 0:
+            return False
+        return (self.hass.loop.time() - self._last_packet) < (
+            self._monitor.stale_after + grace
+        )
 
     async def set_charge_rate(self, watts: int) -> None:
         """Set the AC charge rate in watts (verified: 100 / 200 on unit)."""

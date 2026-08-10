@@ -53,8 +53,10 @@ used by the F2000/767 integration for the same product family.
 The HA component vendors the protocol library at
 `custom_components/anker_solix_ble/lib/anker_ble/` so the component is
 self-contained (HA installs it as a folder; there is no root-level
-`anker_ble/` on sys.path there). `tests/test_vendored_lib_sync.py` asserts
-the vendored copy matches the root package.
+`anker_ble/` on sys.path there). `tests/test_ha_wiring.py` asserts the
+vendored copy matches the root package, and that every HA sensor key
+resolves on the `Telemetry` dataclass (guards against the unavailable-
+entity bug class).
 
 ## Server-side proxy (future transport)
 

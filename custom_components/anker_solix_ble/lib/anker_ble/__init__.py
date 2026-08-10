@@ -23,4 +23,4 @@ __all__ = [
     "CHAR_NOTIFY",
     "CHAR_COMMAND",
 ]
-__version__ = "0.4.0"
+__version__ = "0.4.1"

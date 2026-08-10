@@ -37,16 +37,22 @@ class ChargeRateSelect(SelectEntity):
     ) -> None:
         self.coordinator = coordinator
         self._entry = entry
-        self._attr_unique_id = f"{entry.entry_id}-charge-rate"
+        self._address = entry.data["address"]
+        self._attr_unique_id = f"{self._address}-charge-rate"
         self._attr_name = f"Anker {entry.data.get('name', 'Power Station')} charge rate"
         self._attr_options = CHARGE_RATE_OPTIONS
         self._attr_current_option = DEFAULT_CHARGE_RATE
         self._attr_device_info = {
-            "identifiers": {("anker_solix_ble", entry.entry_id)},
+            "identifiers": {("anker_solix_ble", self._address)},
             "name": entry.data.get("name", "Anker Power Station"),
             "manufacturer": "Anker",
             "model": entry.data.get("model", "SOLIX F1200 / 757 PowerHouse"),
         }
+
+    @property
+    def available(self) -> bool:
+        """Only writable while the unit is connected and reporting."""
+        return self.coordinator.is_fresh()
 
     async def async_select_option(self, option: str) -> None:
         """Write the chosen rate to the unit, then optimistically update."""
