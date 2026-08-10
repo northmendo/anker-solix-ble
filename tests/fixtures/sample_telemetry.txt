@@ -1,6 +1,8 @@
 # Committed fixture: two real 94-byte telemetry packets extracted from the
-# 2026-08-09 capture (capture_long_223854.txt), checksum-valid, verified
-# against the unit display (AC out ~295 W, SOC ~50%). Kept small so the test
-# suite runs on a fresh clone without the full (uncommitted) capture files.
+# 2026-08-09 capture (capture_long_223854.txt), checksum-valid. The capture
+# was verified against the unit display (AC out ~295 W, SOC ~50%); these two
+# packets decode to AC out ~298-309 W, DC in 256 W, SOC 51%. Kept small so
+# the test suite runs on a fresh clone without the full (uncommitted)
+# capture files.
 09ff00000101495e0000000000000000003300000035010000000000000000010003000000000100013901000000007000ca00670000006c007000010001270133000000000001010000000000414b4552303030303030303030303031ed
 09ff00000101495e000000000000000000330000002a010000000000000000010003000000000100012e01000000007000ca00670000006c007000010001270133000000000001010000000000414b4552303030303030303030303031d7

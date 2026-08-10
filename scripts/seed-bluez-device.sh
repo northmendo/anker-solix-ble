@@ -58,7 +58,8 @@ Blocked=false
 EOF
 
 # Restart bluetoothd so it re-reads the device store. (Restarting the
-# service is required: BlueZ only loads devices/ entries at adapter init.)
+# service is required: BlueZ only loads store entries at adapter init,
+# and the store layout is <adapter>/<MAC>/info with no "devices" subdir.)
 systemctl restart bluetooth
 sleep 2
 

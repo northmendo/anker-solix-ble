@@ -65,7 +65,9 @@ Copy `custom_components/anker_solix_ble/` into your HA `config/custom_components
 directory (or install via HACS as a local repository), restart HA, then:
 
 1. Settings → Devices & Services → Add Integration → **Anker SOLIX BLE**
-2. Enter the station's BLE MAC address (find it with `bluetoothctl scan on`)
+2. Enter the station's BLE MAC address (the address is pre-filled if HA has
+   already discovered the station; you can also find it with `bluetoothctl
+   scan on` on the HA host)
 
 Sensors: Battery (%), AC output (W), Total output (W), AC input (W),
 DC input (W), Net power (W). All update at ~2 Hz over BLE, enabling
@@ -93,7 +95,7 @@ sudo udevadm control --reload-rules
 - GATT service `0159f5da-0000-1000-8000-00805f9b34fb`
 - Telemetry notify char `00008888-...` — 94-byte packets at ~2 Hz,
   **no pairing, no encryption**
-- Command char `00007777-...` — read once at connect; the 10-byte wake query
+- Command char `00007777-...` — the 10-byte wake query
   (`08 EE 00 00 00 01 01 0A 00 02`) is written on connect and re-sent every
   30 s to wake a standby unit / keep the BMS reporting
 - Checksum: `sum(packet[:-1]) % 256`

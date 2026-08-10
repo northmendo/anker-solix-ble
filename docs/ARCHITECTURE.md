@@ -41,7 +41,8 @@ it stays resolvable by address even in standby.
 A raw client bypasses HA's Bluetooth stack, which causes:
 - BLE contention (two stacks competing for one radio)
 - No connection pooling with other BLE integrations
-- No way to validate the device in the config flow
+- No access to HA's discovery/registry (the config flow pre-fills the
+  station address from `async_discovered_service_info`)
 - Duplicated retry logic HA already provides
 
 The `bleak_retry_connector` pattern is the standard HA BLE approach and is
