@@ -101,7 +101,7 @@ status/keep-alive ACK from the device.
   15-byte frames (`09 ff 00 00 01 ...`) share that prefix and the same
   checksum scheme. The monitor ignores them (telemetry stays on the 94-byte
   stream), but their presence confirms the wake query path is live.
-- On the test box test box: front USB ports dropped the dongle within 5 s
+- On the test box: front USB ports dropped the dongle within 5 s
   (likely platform-managed), rear ports held with the udev rule in place.
 - Adapter-agnostic guidance: use any BlueZ-compatible adapter; the protocol
   is standard GATT. If packets stop arriving, disconnect → rescan →
