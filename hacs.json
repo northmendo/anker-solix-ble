@@ -1,0 +1,7 @@
+{
+  "name": "Anker SOLIX BLE",
+  "content_in_root": false,
+  "render_readme": true,
+  "homeassistant": "2023.4.0",
+  "hacs": "1.33.0"
+}
