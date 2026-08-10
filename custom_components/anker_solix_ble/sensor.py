@@ -17,7 +17,7 @@ from .coordinator import AnkerDataUpdateCoordinator
 
 SENSORS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
-        key="battery_soc",
+        key="soc",
         name="Battery",
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
