@@ -68,7 +68,6 @@ class AnkerMonitor:
         self._latest: Telemetry | None = None
         self._stop = False
         self._client: BleakClient | None = None
-        self._owns_client = True
 
     async def send_command(self, payload: bytes) -> None:
         """Write an arbitrary command payload to the command characteristic.
@@ -100,16 +99,20 @@ class AnkerMonitor:
     async def _stream_once(self) -> AsyncIterator[Telemetry]:
         if self.client_provider is not None:
             # Home Assistant mode: the caller (coordinator) manages the
-            # connection via bleak_retry_connector. We only subscribe and
-            # consume; we never connect or disconnect ourselves.
+            # connection via bleak_retry_connector. We subscribe and
+            # consume; on exit we stop notifications but never disconnect
+            # (the coordinator's next _get_client call creates a fresh
+            # connection, and bleak_retry_connector pools/releases the old).
             client = await self.client_provider()
             if client is None or not client.is_connected:
                 _LOGGER.warning("external client for %s not connected, retrying",
                                 self.address)
                 return
-            self._owns_client = False
-            async for telemetry in self._consume(client):
-                yield telemetry
+            try:
+                async for telemetry in self._consume(client):
+                    yield telemetry
+            finally:
+                self._client = None
             return
 
         # Standalone mode: try a direct connect first: a station in standby
@@ -140,7 +143,6 @@ class AnkerMonitor:
             client = BleakClient(device, timeout=20.0)
             await client.connect()
 
-        self._owns_client = True
         try:
             async for telemetry in self._consume(client):
                 yield telemetry
@@ -149,57 +151,52 @@ class AnkerMonitor:
             self._client = None
 
     async def _consume(self, client: BleakClient) -> AsyncIterator[Telemetry]:
-        """Subscribe, wake, and yield decoded telemetry on an open client."""
+        """Subscribe, wake, and yield decoded telemetry on an open client.
+
+        Never calls client.disconnect() — that is the caller's responsibility
+        (_stream_once in standalone mode; the coordinator in HA mode).
+        """
+        _LOGGER.info("connected to %s", self.address)
+        self._client = client
+
+        def on_notify(_char, data: bytearray) -> None:
+            self._last_packet = asyncio.get_event_loop().time()
+            packet = decode(bytes(data))
+            if packet is not None:
+                self._latest = packet
+
+        await client.start_notify(CHAR_NOTIFY, on_notify)
+        self._latest = None
+
+        # Wake the unit / keep the BMS reporting, exactly like the
+        # official app: write the status query after connect, then
+        # re-send it periodically in case the unit drops into standby.
+        async def _wake_pump() -> None:
+            while True:
+                try:
+                    await client.write_gatt_char(CHAR_COMMAND, WAKE_QUERY, response=False)
+                except Exception:  # noqa: BLE001 - link may be gone; main loop handles it
+                    _LOGGER.debug("wake query write failed", exc_info=True)
+                    return
+                await asyncio.sleep(WAKE_POLL_INTERVAL)
+
+        await client.write_gatt_char(CHAR_COMMAND, WAKE_QUERY, response=False)
+        wake_task = asyncio.create_task(_wake_pump())
+
         try:
-            _LOGGER.info("connected to %s", self.address)
-            self._client = client
-
-            def on_notify(_char, data: bytearray) -> None:
-                self._last_packet = asyncio.get_event_loop().time()
-                packet = decode(bytes(data))
-                if packet is not None:
-                    # Store latest and let the poll loop emit it.
-                    self._latest = packet
-
-            await client.start_notify(CHAR_NOTIFY, on_notify)
-            self._latest = None
-
-            # Wake the unit / keep the BMS reporting, exactly like the
-            # official app: write the status query after connect, then
-            # re-send it periodically in case the unit drops into standby.
-            async def _wake_pump() -> None:
-                while True:
-                    try:
-                        await client.write_gatt_char(CHAR_COMMAND, WAKE_QUERY, response=False)
-                    except Exception:  # noqa: BLE001 - link may be gone; main loop handles it
-                        _LOGGER.debug("wake query write failed", exc_info=True)
-                        return
-                    await asyncio.sleep(WAKE_POLL_INTERVAL)
-
-            await client.write_gatt_char(CHAR_COMMAND, WAKE_QUERY, response=False)
-            wake_task = asyncio.create_task(_wake_pump())
-
-            try:
-                while True:
-                    await asyncio.sleep(0.25)
-                    if self._latest is not None:
-                        yield self._latest
-                        self._latest = None
-                    now = asyncio.get_event_loop().time()
-                    if now - self._last_packet > self.stale_after:
-                        _LOGGER.warning("no packet for %.0fs, reconnecting",
-                                        now - self._last_packet)
-                        break
-            finally:
-                wake_task.cancel()
-                await client.stop_notify(CHAR_NOTIFY)
+            while True:
+                await asyncio.sleep(0.25)
+                if self._latest is not None:
+                    yield self._latest
+                    self._latest = None
+                now = asyncio.get_event_loop().time()
+                if now - self._last_packet > self.stale_after:
+                    _LOGGER.warning("no packet for %.0fs, reconnecting",
+                                    now - self._last_packet)
+                    break
         finally:
-            # Never disconnect an external (HA-managed) client — the
-            # coordinator owns its lifecycle. Standalone mode disconnects
-            # in _stream_once.
-            if self._owns_client:
-                await client.disconnect()
-            self._client = None
+            wake_task.cancel()
+            await client.stop_notify(CHAR_NOTIFY)
 
     async def _find_device(self):
         for _ in range(3):

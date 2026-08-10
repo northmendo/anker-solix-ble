@@ -47,6 +47,7 @@ class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
         )
         self._task: asyncio.Task | None = None
         self._latest: Telemetry | None = None
+        self._current_client: BleakClient | None = None
         self.data = None
 
     async def _get_client(self) -> BleakClient | None:
@@ -57,6 +58,15 @@ class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
         HA has ever seen it), then bleak_retry_connector for the connection
         with backoff. This is the standard HA BLE pattern.
         """
+        # Disconnect any previous client before establishing a new one:
+        # the unit accepts only one connection at a time.
+        if self._current_client is not None:
+            try:
+                await self._current_client.disconnect()
+            except Exception:
+                _LOGGER.debug("failed to disconnect previous client", exc_info=True)
+            self._current_client = None
+
         device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )
@@ -69,11 +79,13 @@ class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
             )
             return None
         try:
-            return await establish_connection(
+            client = await establish_connection(
                 BleakClientWithServiceCache,
                 device,
                 self._entry.entry_id,
             )
+            self._current_client = client
+            return client
         except Exception as exc:
             _LOGGER.warning("BLE connect to %s failed: %s", self.address, exc)
             return None
@@ -112,3 +124,9 @@ class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
             except asyncio.CancelledError:
                 pass
             self._task = None
+        if self._current_client is not None:
+            try:
+                await self._current_client.disconnect()
+            except Exception:
+                pass
+            self._current_client = None
