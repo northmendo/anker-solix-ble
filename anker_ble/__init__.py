@@ -6,6 +6,7 @@ from .protocol import (
     SERVICE_UUID,
     Telemetry,
     WAKE_QUERY,
+    charge_rate_command,
     checksum,
     decode,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "Telemetry",
     "decode",
     "checksum",
+    "charge_rate_command",
     "WAKE_QUERY",
     "SERVICE_UUID",
     "CHAR_NOTIFY",

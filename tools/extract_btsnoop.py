@@ -17,8 +17,11 @@ The payload with a trailing checksum byte (sum%256 of the rest) is our target.
 Format notes (btsnoop):
   - File header 16 bytes: magic 0x6274736e ("btsnoop"), version, datalink type
     (1002 = HCI UART / H4)
-  - Record header 20 bytes: 4-byte original length, 4-byte captured length,
-    4-byte flags, 8-byte timestamp (microseconds since 1970-01-01), then packet
+  - Record header 24 bytes (Android/Samsung): 4-byte original length,
+    4-byte captured length, 4-byte flags, 4-byte unused, 8-byte timestamp
+    (microseconds since 1970-01-01). (Some tools emit the standard 20-byte
+    header: 4+4+4+8 with no unused field. The parser auto-detects by trying
+    both and keeping the layout that walks the file without truncation.)
   - H4 type byte: 0x02 = ACL data
   - ACL header: 2-byte handle+flags, 2-byte length, then L2CAP payload
   - L2CAP B-frame: 2-byte len, 2-byte CID (0x0004 = ATT), then ATT payload
@@ -37,19 +40,38 @@ ATT_WRITE_REQ = 0x12
 ATT_WRITE_CMD = 0x52
 OPCODE_NAMES = {ATT_WRITE_REQ: "write-req", ATT_WRITE_CMD: "write-cmd"}
 
-RECORD_HDR = 20  # 4+4+4+8
+RECORD_HDRS = (20, 24)  # standard vs Android/Samsung; auto-detected
+
+
+def detect_record_hdr(data: bytes) -> int:
+    """Return the record header size that walks the whole file sanely."""
+    best = 20
+    best_ok = -1
+    for hdr in RECORD_HDRS:
+        off = 16
+        ok = 0
+        while off + hdr <= len(data):
+            orig, captured = struct.unpack_from(">II", data, off)
+            if captured > 65535:
+                break
+            off += hdr + captured
+            ok += 1
+        if ok > best_ok:
+            best_ok, best = ok, hdr
+    return best
 
 
 def iter_records(path: Path):
     data = path.read_bytes()
     if len(data) < 16 or data[0:8] != b"btsnoop\x00":
         raise ValueError("not a btsnoop file (bad magic)")
+    hdr = detect_record_hdr(data)
     off = 16
-    while off + RECORD_HDR <= len(data):
+    while off + hdr <= len(data):
         orig_len, captured_len = struct.unpack_from(">II", data, off)
-        ts_us = struct.unpack_from(">Q", data, off + 12)[0]
-        pkt = data[off + RECORD_HDR : off + RECORD_HDR + captured_len]
-        off += RECORD_HDR + captured_len
+        ts_us = struct.unpack_from(">Q", data, off + 16)[0]
+        pkt = data[off + hdr : off + hdr + captured_len]
+        off += hdr + captured_len
         yield ts_us, pkt
 
 

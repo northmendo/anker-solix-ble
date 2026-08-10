@@ -58,6 +58,22 @@ class AnkerMonitor:
         self._last_packet = 0.0
         self._latest: Telemetry | None = None
         self._stop = False
+        self._client: BleakClient | None = None
+
+    async def send_command(self, payload: bytes) -> None:
+        """Write an arbitrary command payload to the command characteristic.
+
+        Raises ConnectionError if the monitor is not currently connected.
+        """
+        if self._client is None or not self._client.is_connected:
+            raise ConnectionError("monitor is not connected")
+        await self._client.write_gatt_char(CHAR_COMMAND, payload, response=False)
+
+    async def set_charge_rate(self, watts: int) -> None:
+        """Set the AC charge rate in watts (verified: 100 / 200 on unit)."""
+        from .protocol import charge_rate_command
+
+        await self.send_command(charge_rate_command(watts))
 
     async def stream(self) -> AsyncIterator[Telemetry]:
         """Yield telemetry packets forever, reconnecting as needed."""
@@ -102,6 +118,7 @@ class AnkerMonitor:
 
         try:
             _LOGGER.info("connected to %s", self.address)
+            self._client = client
 
             def on_notify(_char, data: bytearray) -> None:
                 self._last_packet = asyncio.get_event_loop().time()
@@ -144,6 +161,7 @@ class AnkerMonitor:
                 await client.stop_notify(CHAR_NOTIFY)
         finally:
             await client.disconnect()
+            self._client = None
 
     async def _find_device(self):
         for _ in range(3):

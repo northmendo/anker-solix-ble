@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from anker_ble import WAKE_QUERY, decode, checksum
+from anker_ble import WAKE_QUERY, charge_rate_command, checksum, decode
 
 
 def test_wake_query_checksum() -> None:
@@ -16,6 +16,21 @@ def test_wake_query_checksum() -> None:
     assert len(WAKE_QUERY) == 10
     assert checksum(WAKE_QUERY) == WAKE_QUERY[-1] == 0x02
     print(f"wake query checksum ok: {WAKE_QUERY.hex()}")
+
+
+def test_charge_rate_command() -> None:
+    """Charge-rate command matches the app-captured payload byte-for-byte.
+
+    Captured from the Anker app's btsnoop log 2026-08-10 and verified live
+    on the unit (200W moved AC input ~420W -> ~520W; 100W restored ~420W).
+    """
+    assert charge_rate_command(200).hex() == "08ee00000002800c00c8004c"
+    assert charge_rate_command(100).hex() == "08ee00000002800c006400e8"
+    # Checksum is the same sum % 256 scheme.
+    for watts in (100, 200, 150, 1):
+        cmd = charge_rate_command(watts)
+        assert checksum(cmd) == cmd[-1], f"bad checksum for {watts}W"
+    print("charge rate commands match app capture; checksums ok")
 
 
 def test_wake_query_prefix() -> None:

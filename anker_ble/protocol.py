@@ -31,6 +31,26 @@ PACKET_LEN = 94
 # (see monitor.WAKE_POLL_INTERVAL) to keep the BMS pushing updates while idle.
 WAKE_QUERY = bytes([0x08, 0xEE, 0x00, 0x00, 0x00, 0x01, 0x01, 0x0A, 0x00, 0x02])
 
+# Control commands (verified live 2026-08-09 from app-captured payloads):
+#   write to CHAR_COMMAND with response=False. Last byte = sum % 256.
+#   opcode 0x02 = set register, then 2-byte register id + value.
+#   register 0x800C = AC charge rate in watts (100/200 confirmed on unit:
+#   200W payload moved AC input ~420W -> ~520W; 100W restored ~420W).
+#   register 0x880B = unknown toggle (2/1 seen from app; not touched live).
+
+def charge_rate_command(watts: int) -> bytes:
+    """Build a charge-rate command: op 0x02, reg 0x800C, value in W."""
+    if not 0 <= watts <= 0xFFFF:
+        raise ValueError(f"charge rate out of range: {watts}")
+    body = bytes([0x08, 0xEE, 0x00, 0x00, 0x00, 0x02, 0x80, 0x0C, 0x00, watts & 0xFF, 0x00])
+    return body + bytes([sum(body) % 256])
+
+
+def unknown_toggle_command(value: int) -> bytes:
+    """Build a command for register 0x880B (function unknown; do not use)."""
+    body = bytes([0x08, 0xEE, 0x00, 0x00, 0x00, 0x02, 0x88, 0x0B, 0x00, value & 0xFF])
+    return body + bytes([sum(body) % 256])
+
 # Offsets verified against the unit display 2026-08-09.
 # u16 values are little-endian.
 _OFF_AC_OUTPUT = 21
