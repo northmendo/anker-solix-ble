@@ -38,7 +38,7 @@ Decoded values were verified against the unit's display
 | DC input W | u16 LE | 37 | 253 |
 | Total output W | u16 LE | 41 | 299 |
 | Battery SOC % | u8 | 64 | 50 |
-| Serial | ASCII | 77..92 | `AKER000000000001` |
+| Serial | ASCII | 77..92 | `A...` (redacted — your unit's serial) |
 | Checksum | u8 | 93 | sum % 256 |
 
 ### Not yet decoded
@@ -106,6 +106,26 @@ status/keep-alive ACK from the device.
 - Adapter-agnostic guidance: use any BlueZ-compatible adapter; the protocol
   is standard GATT. If packets stop arriving, disconnect → rescan →
   reconnect → resubscribe (the monitor does this automatically).
+
+## Control commands (AC charge rate)
+
+Reverse-engineered from the official app's btsnoop log 2026-08-10 and
+verified live on the unit. Format mirrors the wake query (write to
+`00007777`, no response, last byte = sum % 256):
+
+| Command | Payload | Effect (verified) |
+|---|---|---|
+| Set charge rate 200 W | `08 EE 00 00 00 02 80 0C 00 C8 00 4C` | AC input ~420 W → ~520 W |
+| Set charge rate 100 W | `08 EE 00 00 00 02 80 0C 00 64 00 E8` | AC input back to ~420 W |
+
+- Opcode `0x02` = set register; bytes 6-7 = register id; byte 9 = value.
+- Register `0x800C` = AC charge rate in watts (100/200 confirmed; the app
+  also accepts intermediate values — treat as a limit, not a guarantee).
+- Register `0x880B` with values 2/1 was captured from the app but its
+  function is unknown; **do not write it** (may toggle an unidentified
+  setting).
+- Builder: `anker_ble.protocol.charge_rate_command(watts)`; CLI:
+  `python cli.py --set-charge-rate W <MAC>`.
 
 ## References
 

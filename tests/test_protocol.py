@@ -82,15 +82,21 @@ def test_known_packet(capture_path: str) -> None:
     t = decode(pkt)
     assert t is not None
     assert t.checksum_ok, "checksum failed on known packet"
-    assert t.serial == "AKER000000000001"
+    # Serial is unit-specific; assert format (16 chars, letter-prefixed),
+    # not the exact value, so the fixture is safe to publish.
+    assert len(t.serial) == 16 and t.serial[0].isalpha(), f"unexpected serial {t.serial!r}"
     assert 280 <= t.ac_output_w <= 360, f"AC output out of range: {t.ac_output_w}"
     print(f"known packet: ac={t.ac_output_w}W dc={t.dc_input_w}W soc={t.soc}% "
           f"net={t.net_w}W serial={t.serial}")
 
 
 if __name__ == "__main__":
-    capture_path = sys.argv[1] if len(sys.argv) > 1 else "../capture_long_223854.txt"
-    test_known_packet(capture_path)
+    # Default: committed fixture (portable on fresh clone). Optional args:
+    # one or more full capture files to validate against (e.g. the original
+    # ../capture_long_223854.txt kept locally out of git).
+    fixture = str(Path(__file__).resolve().parent / "fixtures" / "sample_telemetry.txt")
+    test_known_packet(fixture)
+    test_checksums(fixture)
     for arg in sys.argv[1:]:
         test_checksums(arg)
     print("ALL TESTS PASSED")

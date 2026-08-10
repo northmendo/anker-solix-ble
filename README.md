@@ -48,7 +48,7 @@ python3 -m venv .venv
 Output is one JSON object per telemetry packet (~2 Hz):
 
 ```json
-{"ac_output_w": 295, "total_output_w": 299, "ac_input_w": 0, "dc_input_w": 253, "net_w": -46, "soc": 50, "serial": "AKER000000000001"}
+{"ac_output_w": 295, "total_output_w": 299, "ac_input_w": 0, "dc_input_w": 253, "net_w": -46, "soc": 50, "serial": "A...58"}
 ```
 
 ## Home Assistant
@@ -98,10 +98,17 @@ This is a **different** protocol from the newer SOLIX F2000/F2600/F3800
 
 ## Status
 
-Monitoring: working, verified. Control (AC output toggle, etc.): not yet
-reverse-engineered. The command characteristic accepts writes (see the 767
-decoder for a similar unit's format) but the payloads for this unit are
-undocumented — contributions welcome.
+Monitoring: working, verified against the unit display and live AC-input
+behavior. Control: **AC charge rate** is implemented and verified live
+(`cli.py --set-charge-rate W`; 200W moves AC input ~420W → ~520W, 100W
+restores ~420W). Other control payloads (AC output toggle, light, etc.) are
+not yet reverse-engineered — the command characteristic accepts writes (same
+`08 EE` family) but their register map is undocumented; contributions welcome.
+
+Home Assistant integration: the component is written and compiles, and the
+underlying monitor is live-verified, but the HA integration itself has not
+been exercised end-to-end on a running HA instance by the author — please
+test in a staging install before relying on it.
 
 ## Disclaimer
 
