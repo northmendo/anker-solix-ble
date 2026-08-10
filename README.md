@@ -73,8 +73,8 @@ Sensors: Battery (%), AC output (W), Total output (W), AC input (W),
 DC input (W), Net power (W). All update at ~2 Hz over BLE, enabling
 automations on power thresholds, SOC, etc.
 
-Control: a **Charge rate** select entity (100 W / 200 W, optimistic) writes
-the AC charge rate to the unit — verified live.
+Control: a **Charge rate** select entity (100 W to 1000 W, 100 W steps,
+optimistic) writes the AC charge rate to the unit — 100/200 W verified live.
 
 Requires HA's Bluetooth integration to be enabled and a working BLE adapter
 on the HA host. The component refuses to start with a clear error if no

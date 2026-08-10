@@ -117,8 +117,10 @@ verified live on the unit. Format mirrors the wake query (write to
 |---|---|---|
 | Set charge rate 200 W | `08 EE 00 00 00 02 80 0C 00 C8 00 4C` | AC input ~420 W → ~520 W |
 | Set charge rate 100 W | `08 EE 00 00 00 02 80 0C 00 64 00 E8` | AC input back to ~420 W |
+| Set charge rate 1000 W | `08 EE 00 00 00 02 80 0C 00 E8 03 6F` | rate value is u16 LE; see below |
 
-- Opcode `0x02` = set register; bytes 6-7 = register id; byte 9 = value.
+- Opcode `0x02` = set register; bytes 6-7 = register id; bytes 9-10 =
+  value as a little-endian u16 (so rates above 255 W work: 1000 W = `E8 03`).
 - Register `0x800C` = AC charge rate in watts (100/200 confirmed; the app
   also accepts intermediate values — treat as a limit, not a guarantee).
 - Register `0x880B` with values 2/1 was captured from the app but its

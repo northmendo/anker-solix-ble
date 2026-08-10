@@ -23,14 +23,19 @@ def test_charge_rate_command() -> None:
 
     Captured from the Anker app's btsnoop log 2026-08-10 and verified live
     on the unit (200W moved AC input ~420W -> ~520W; 100W restored ~420W).
+    The rate is a little-endian u16 (bytes 9-10), so rates above 255 W
+    (e.g. 1000 W = 0x03E8) encode as e8 03.
     """
     assert charge_rate_command(200).hex() == "08ee00000002800c00c8004c"
     assert charge_rate_command(100).hex() == "08ee00000002800c006400e8"
+    # Higher rates: u16 LE at bytes 9-10.
+    assert charge_rate_command(300).hex() == "08ee00000002800c002c01b1"
+    assert charge_rate_command(1000).hex() == "08ee00000002800c00e8036f"
     # Checksum is the same sum % 256 scheme.
-    for watts in (100, 200, 150, 1):
+    for watts in (100, 200, 300, 1000, 150, 1, 65535):
         cmd = charge_rate_command(watts)
         assert checksum(cmd) == cmd[-1], f"bad checksum for {watts}W"
-    print("charge rate commands match app capture; checksums ok")
+    print("charge rate commands match app capture (incl. >255W); checksums ok")
 
 
 def test_wake_query_prefix() -> None:

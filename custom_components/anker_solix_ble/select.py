@@ -3,7 +3,8 @@
 The unit does not report its current AC charge rate back over BLE in the
 telemetry we decode, so the select is optimistic: HA shows the last value
 the user chose. Writes go through the coordinator to the command
-characteristic (verified live: 100 W / 200 W on the unit).
+characteristic. Rate value is a little-endian u16 (100-1000 W verified
+encoding; 100/200 W verified live on the unit).
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import AnkerDataUpdateCoordinator
 
-CHARGE_RATE_OPTIONS = ["100", "200"]  # watts; verified on the unit
+CHARGE_RATE_OPTIONS = [str(w) for w in range(100, 1001, 100)]  # 100..1000 W
 DEFAULT_CHARGE_RATE = "100"
 
 

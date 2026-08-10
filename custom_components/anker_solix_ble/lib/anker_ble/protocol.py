@@ -36,13 +36,21 @@ WAKE_QUERY = bytes([0x08, 0xEE, 0x00, 0x00, 0x00, 0x01, 0x01, 0x0A, 0x00, 0x02])
 #   opcode 0x02 = set register, then 2-byte register id + value.
 #   register 0x800C = AC charge rate in watts (100/200 confirmed on unit:
 #   200W payload moved AC input ~420W -> ~520W; 100W restored ~420W).
+#   The rate value is a little-endian u16 at bytes 9-10, so rates above
+#   255 W (e.g. 1000 W = 0x03E8) encode as e8 03.
 #   register 0x880B = unknown toggle (2/1 seen from app; not touched live).
 
 def charge_rate_command(watts: int) -> bytes:
-    """Build a charge-rate command: op 0x02, reg 0x800C, value in W."""
+    """Build a charge-rate command: op 0x02, reg 0x800C, value in W.
+
+    The rate is a little-endian u16 (bytes 9-10). Verified payloads:
+    100 W = ``08ee00000002800c006400e8``, 200 W = ``08ee00000002800c00c8004c``.
+    """
     if not 0 <= watts <= 0xFFFF:
         raise ValueError(f"charge rate out of range: {watts}")
-    body = bytes([0x08, 0xEE, 0x00, 0x00, 0x00, 0x02, 0x80, 0x0C, 0x00, watts & 0xFF, 0x00])
+    body = bytes(
+        [0x08, 0xEE, 0x00, 0x00, 0x00, 0x02, 0x80, 0x0C, 0x00, watts & 0xFF, (watts >> 8) & 0xFF]
+    )
     return body + bytes([sum(body) % 256])
 
 
