@@ -110,8 +110,10 @@ status/keep-alive ACK from the device.
 ## Control commands (AC charge rate)
 
 Reverse-engineered from the official app's btsnoop log 2026-08-10 and
-verified live on the unit. Format mirrors the wake query (write to
-`00007777`, no response, last byte = sum % 256):
+verified live on the unit. Format matches
+[yun-s-oh/ha-anker-solix-f2000](https://github.com/yun-s-oh/ha-anker-solix-f2000)
+(the same unencrypted protocol family): `08 EE 00 00 00 | 02 | cmd_id |
+total_len (u16 LE) | payload | checksum`:
 
 | Command | Payload | Effect (verified) |
 |---|---|---|
@@ -119,13 +121,19 @@ verified live on the unit. Format mirrors the wake query (write to
 | Set charge rate 100 W | `08 EE 00 00 00 02 80 0C 00 64 00 E8` | AC input back to ~420 W |
 | Set charge rate 1000 W | `08 EE 00 00 00 02 80 0C 00 E8 03 6F` | rate value is u16 LE; see below |
 
-- Opcode `0x02` = set register; bytes 6-7 = register id; bytes 9-10 =
-  value as a little-endian u16 (so rates above 255 W work: 1000 W = `E8 03`).
-- Register `0x800C` = AC charge rate in watts (100/200 confirmed; the app
-  also accepts intermediate values — treat as a limit, not a guarantee).
-- Register `0x880B` with values 2/1 was captured from the app but its
-  function is unknown; **do not write it** (may toggle an unidentified
-  setting).
+- Packet type `0x02` = control; byte 6 = command ID; bytes 7-8 = total
+  length (u16 LE, includes prefix+checksum); payload follows; last byte =
+  checksum (`sum % 256`).
+- Cmd `0x80` = AC charge rate, payload u16 LE watts (100/200 confirmed; the
+  app also accepts intermediate values — treat as a limit, not a guarantee).
+- Cmd `0x88` = screen brightness, payload 0..3. Captured from the app as
+  `08 EE 00 00 00 02 88 0B 00 02 8D` (brightness 2) and `... 01 8C`
+  (brightness 1). (Previously mislabeled "register 0x880B unknown toggle".)
+- Cmd `0x86` = AC output toggle on the 767/F2000, but **not** on this unit:
+  verified live 2026-08-10 by sweeping 0x81-0x8F with both 1-byte and
+  2-byte payloads — AC output never dropped below the load baseline. The
+  757's AC-toggle command ID is still unknown; finding it needs an app
+  capture where AC is toggled.
 - Builder: `anker_ble.protocol.charge_rate_command(watts)`; CLI:
   `python cli.py --set-charge-rate W <MAC>`.
 

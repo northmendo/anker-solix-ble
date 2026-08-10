@@ -33,17 +33,21 @@ WAKE_QUERY = bytes([0x08, 0xEE, 0x00, 0x00, 0x00, 0x01, 0x01, 0x0A, 0x00, 0x02])
 
 # Control commands (verified live 2026-08-09 from app-captured payloads):
 #   write to CHAR_COMMAND with response=False. Last byte = sum % 256.
-#   opcode 0x02 = set register, then 2-byte register id + value.
-#   register 0x800C = AC charge rate in watts (100/200 confirmed on unit:
-#   200W payload moved AC input ~420W -> ~520W; 100W restored ~420W).
-#   The rate value is a little-endian u16 at bytes 9-10, so rates above
-#   255 W (e.g. 1000 W = 0x03E8) encode as e8 03.
-#   register 0x880B = unknown toggle (2/1 seen from app; not touched live).
+#   Format matches yun-s-oh/ha-anker-solix-f2000 (same protocol family):
+#     08 EE 00 00 00 | 02 | cmd_id | total_len (u16 LE) | payload | checksum
+#   cmd 0x80 = AC charge rate (payload u16 LE watts; 100/200 verified on
+#     unit: 200W moved AC input ~420W -> ~520W; 100W restored ~420W).
+#   cmd 0x88 = screen brightness (app wrote 2 then 1; previously mislabeled
+#     "0x880B unknown toggle").
+#   cmd 0x86 = AC output toggle on the 767/F2000, but NOT on this unit
+#     (verified 2026-08-10: swept 0x81-0x8F with 1-byte and 2-byte payloads;
+#     AC output never dropped below load baseline). The 757's AC toggle
+#     command ID remains unknown — needs an app capture with AC toggled.
 
 def charge_rate_command(watts: int) -> bytes:
-    """Build a charge-rate command: op 0x02, reg 0x800C, value in W.
+    """Build a charge-rate command: type 0x02, cmd 0x80, value u16 LE watts.
 
-    The rate is a little-endian u16 (bytes 9-10). Verified payloads:
+    The rate is a little-endian u16 payload. Verified payloads:
     100 W = ``08ee00000002800c006400e8``, 200 W = ``08ee00000002800c00c8004c``.
     """
     if not 0 <= watts <= 0xFFFF:
@@ -54,8 +58,13 @@ def charge_rate_command(watts: int) -> bytes:
     return body + bytes([sum(body) % 256])
 
 
-def unknown_toggle_command(value: int) -> bytes:
-    """Build a command for register 0x880B (function unknown; do not use)."""
+def screen_brightness_command(value: int) -> bytes:
+    """Build a screen-brightness command (cmd 0x88, payload 0..3).
+
+    Captured from the app as ``08ee00000002880b00028d`` (brightness 2) and
+    ``08ee00000002880b00018c`` (brightness 1). Formerly mislabeled
+    ``unknown_toggle_command``.
+    """
     body = bytes([0x08, 0xEE, 0x00, 0x00, 0x00, 0x02, 0x88, 0x0B, 0x00, value & 0xFF])
     return body + bytes([sum(body) % 256])
 
