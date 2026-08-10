@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from typing import Any
 
 from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakDeviceNotFoundError
@@ -34,6 +35,43 @@ _LOGGER = logging.getLogger(__name__)
 # How often to re-send the wake query to a connected unit. Matches the
 # F2000/767 integration's DEFAULT_POLL_INTERVAL of 30 s.
 WAKE_POLL_INTERVAL = 30.0
+
+
+async def _bluez_device_from_address(address: str) -> "Any | None":
+    """Resolve a known BlueZ device without scanning.
+
+    bleak >= 3 resolves ``BleakClient(address)`` by scanning, which misses
+    standby units that do not advertise. BlueZ keeps such devices in its
+    ObjectManager (D-Bus) once seeded (scripts/seed-bluez-device.sh), and a
+    BLEDevice with the known path connects directly. Returns a BLEDevice or
+    None if BlueZ has no object for the address.
+    """
+    try:
+        from dbus_fast.aio import MessageBus
+        from dbus_fast.constants import BusType
+    except ImportError:
+        return None
+
+    try:
+        bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+        obj = bus.get_proxy_object(
+            "org.bluez", "/", "org.freedesktop.DBus.ObjectManager"
+        )
+        iface = obj.get_interface("org.freedesktop.DBus.ObjectManager")
+        objects = await iface.call_get_managed_objects()
+        await bus.disconnect()
+    except Exception:
+        return None
+
+    target = address.upper().replace(":", "_")
+    for path, interfaces in objects.items():
+        props = interfaces.get("org.bluez.Device1", {})
+        dev_addr = (props.get("Address") or "").replace(":", "_").upper()
+        if dev_addr == target:
+            from bleak.backends.device import BLEDevice
+
+            return BLEDevice(address, props.get("Name") or None, {"path": path})
+    return None
 
 
 class AnkerMonitor:
@@ -122,17 +160,27 @@ class AnkerMonitor:
             client = BleakClient(self.address, timeout=20.0)
             await client.connect()
         except BleakDeviceNotFoundError:
-            # BlueZ refuses connect-by-address for devices it has no entry
-            # for. If the unit is in standby it does not advertise, so a
-            # scan cannot find it either. Fix: seed BlueZ's device store
-            # once (scripts/seed-bluez-device.sh). After seeding, connect-
-            # by-address issues a directed LE connection that succeeds when
-            # the unit's radio is in its low-duty listen window.
-            _LOGGER.warning(
-                "device %s unknown to BlueZ; run scripts/seed-bluez-device.sh "
-                "%s to seed it (see README), retrying", self.address, self.address
-            )
-            return
+            # bleak >= 3 resolves addresses by SCANNING, and a standby unit
+            # does not advertise — even though BlueZ knows it (the D-Bus
+            # device object exists). Resolve the device from BlueZ's
+            # ObjectManager (no scan) and connect via the known path.
+            # This preserves connect-by-address for seeded standby units.
+            device = await _bluez_device_from_address(self.address)
+            if device is None:
+                # BlueZ has no entry for this address either. If the unit is
+                # in standby it does not advertise, so a scan cannot find it
+                # either. Fix: seed BlueZ's device store once
+                # (scripts/seed-bluez-device.sh). After seeding, the object
+                # manager resolves it and connect-by-address issues a
+                # directed LE connection that succeeds when the unit's radio
+                # is in its low-duty listen window.
+                _LOGGER.warning(
+                    "device %s unknown to BlueZ; run scripts/seed-bluez-device.sh "
+                    "%s to seed it (see README), retrying", self.address, self.address
+                )
+                return
+            client = BleakClient(device, timeout=20.0)
+            await client.connect()
         except Exception:
             # Fall back to discovery (required on some adapters, and picks up
             # the D-Bus path on Linux when a cached device is found).
