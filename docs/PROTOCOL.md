@@ -120,6 +120,10 @@ total_len (u16 LE) | payload | checksum`:
 | Set charge rate 200 W | `08 EE 00 00 00 02 80 0C 00 C8 00 4C` | AC input ~420 W → ~520 W |
 | Set charge rate 100 W | `08 EE 00 00 00 02 80 0C 00 64 00 E8` | AC input back to ~420 W |
 | Set charge rate 1000 W | `08 EE 00 00 00 02 80 0C 00 E8 03 6F` | rate value is u16 LE; see below |
+| AC output ON | `08 EE 00 00 00 02 86 0B 00 01 8A` | app-captured, unit ACKed `09 FF 00 00 01 02 86 0A 00 9B` |
+| AC output OFF | `08 EE 00 00 00 02 86 0B 00 00 89` | app-captured, unit ACKed |
+| DC output ON | `08 EE 00 00 00 02 87 0B 00 01 8B` | app-captured, unit ACKed `09 FF 00 00 01 02 87 0A 00 9C` |
+| DC output OFF | `08 EE 00 00 00 02 87 0B 00 00 8A` | app-captured, unit ACKed |
 
 - Packet type `0x02` = control; byte 6 = command ID; bytes 7-8 = total
   length (u16 LE, includes prefix+checksum); payload follows; last byte =
@@ -129,13 +133,18 @@ total_len (u16 LE) | payload | checksum`:
 - Cmd `0x88` = screen brightness, payload 0..3. Captured from the app as
   `08 EE 00 00 00 02 88 0B 00 02 8D` (brightness 2) and `... 01 8C`
   (brightness 1). (Previously mislabeled "register 0x880B unknown toggle".)
-- Cmd `0x86` = AC output toggle on the 767/F2000, but **not** on this unit:
-  verified live 2026-08-10 by sweeping 0x81-0x8F with both 1-byte and
-  2-byte payloads — AC output never dropped below the load baseline. The
-  757's AC-toggle command ID is still unknown; finding it needs an app
-  capture where AC is toggled.
-- Builder: `anker_ble.protocol.charge_rate_command(watts)`; CLI:
-  `python cli.py --set-charge-rate W <MAC>`.
+- Cmd `0x86` / `0x87` = AC/DC output toggle on this unit (1 = on, 0 = off).
+  Captured from the app 2026-08-10 (btsnoop_hci-1.log); each write was
+  ACKed by the unit. **Prerequisite:** the app sent the control-arming
+  query `08 EE 00 00 00 01 02 0A 00 03` (CONTROL_QUERY) plus a CCCD
+  re-subscribe before the toggles. Writes without that query were ignored
+  by the unit in our probes (no ACK, no state change), so always send
+  CONTROL_QUERY first. On-unit effect not yet live-verified from HA.
+- Builder: `anker_ble.protocol.charge_rate_command(watts)`;
+  `ac_output_command(on)`; `dc_output_command(on)`; CLI:
+  `python cli.py --set-charge-rate W <MAC>`,
+  `python cli.py --set-ac-output on|off <MAC>`,
+  `python cli.py --set-dc-output on|off <MAC>`.
 
 ## References
 

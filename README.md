@@ -75,6 +75,8 @@ automations on power thresholds, SOC, etc.
 
 Control: a **Charge rate** select entity (100 W to 1000 W, 100 W steps,
 optimistic) writes the AC charge rate to the unit — 100/200 W verified live.
+**AC output** and **DC output** switch entities use the app-captured toggle
+payloads (cmd `0x86`/`0x87`, ACKed by the unit; CONTROL_QUERY sent first).
 
 Requires HA's Bluetooth integration to be enabled and a working BLE adapter
 on the HA host. The component refuses to start with a clear error if no

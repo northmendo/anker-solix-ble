@@ -122,6 +122,25 @@ class AnkerMonitor:
 
         await self.send_command(charge_rate_command(watts))
 
+    async def set_ac_output(self, on: bool) -> None:
+        """Turn the AC output on/off (app-captured cmd 0x86).
+
+        The app sends CONTROL_QUERY before the toggle write; mirror that
+        so the unit honors the command (writes without the query were
+        ignored in probing).
+        """
+        from .protocol import CONTROL_QUERY, ac_output_command
+
+        await self.send_command(CONTROL_QUERY)
+        await self.send_command(ac_output_command(on))
+
+    async def set_dc_output(self, on: bool) -> None:
+        """Turn the DC output on/off (app-captured cmd 0x87)."""
+        from .protocol import CONTROL_QUERY, dc_output_command
+
+        await self.send_command(CONTROL_QUERY)
+        await self.send_command(dc_output_command(on))
+
     async def stream(self) -> AsyncIterator[Telemetry]:
         """Yield telemetry packets forever, reconnecting as needed."""
         while not self._stop:

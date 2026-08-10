@@ -39,10 +39,21 @@ WAKE_QUERY = bytes([0x08, 0xEE, 0x00, 0x00, 0x00, 0x01, 0x01, 0x0A, 0x00, 0x02])
 #     unit: 200W moved AC input ~420W -> ~520W; 100W restored ~420W).
 #   cmd 0x88 = screen brightness (app wrote 2 then 1; previously mislabeled
 #     "0x880B unknown toggle").
-#   cmd 0x86 = AC output toggle on the 767/F2000, but NOT on this unit
-#     (verified 2026-08-10: swept 0x81-0x8F with 1-byte and 2-byte payloads;
-#     AC output never dropped below load baseline). The 757's AC toggle
-#     command ID remains unknown — needs an app capture with AC toggled.
+#   cmd 0x86 = AC output toggle (0x01=on, 0x00=off) on the 757: captured
+#     from app 2026-08-10 (btsnoop_hci-1.log) as 08ee00000002860b00018a /
+#     08ee00000002860b000089, each ACKed by the unit
+#     (09ff00000102860a009b). NOTE: the app sent query 08ee00000001020a0003
+#     + CCCD re-subscribe before the toggle writes; without that query the
+#     unit ignored identical writes in our probes (no ACK, no state change).
+#   cmd 0x87 = DC output toggle (0x01=on, 0x00=off), same caveat.
+#   cmd 0x80 = AC charge rate (payload u16 LE watts; 100/200 verified on
+#     unit: 200W moved AC input ~420W -> ~520W; 100W restored ~420W).
+#   cmd 0x88 = screen brightness (app wrote 2 then 1; previously mislabeled
+#     "0x880B unknown toggle").
+
+# Control-arming query: the app sends this (plus CCCD re-subscribe) before
+# output-toggle writes; the unit ACKs it and then honors 0x86/0x87.
+CONTROL_QUERY = bytes([0x08, 0xEE, 0x00, 0x00, 0x00, 0x01, 0x02, 0x0A, 0x00, 0x03])
 
 def charge_rate_command(watts: int) -> bytes:
     """Build a charge-rate command: type 0x02, cmd 0x80, value u16 LE watts.
@@ -55,6 +66,28 @@ def charge_rate_command(watts: int) -> bytes:
     body = bytes(
         [0x08, 0xEE, 0x00, 0x00, 0x00, 0x02, 0x80, 0x0C, 0x00, watts & 0xFF, (watts >> 8) & 0xFF]
     )
+    return body + bytes([sum(body) % 256])
+
+
+def ac_output_command(on: bool) -> bytes:
+    """Build the AC output toggle (cmd 0x86): 0x01 = on, 0x00 = off.
+
+    Payload captured from the app (btsnoop_hci-1.log, 2026-08-10) and
+    ACKed by the unit: on = ``08ee00000002860b00018a``,
+    off = ``08ee00000002860b000089``. The app preceded the write with
+    CONTROL_QUERY; send that first (see module docstring).
+    """
+    body = bytes([0x08, 0xEE, 0x00, 0x00, 0x00, 0x02, 0x86, 0x0B, 0x00, 0x01 if on else 0x00])
+    return body + bytes([sum(body) % 256])
+
+
+def dc_output_command(on: bool) -> bytes:
+    """Build the DC output toggle (cmd 0x87): 0x01 = on, 0x00 = off.
+
+    Captured from the app (btsnoop_hci-1.log): on =
+    ``08ee00000002870b00018b``, off = ``08ee00000002870b00008a``.
+    """
+    body = bytes([0x08, 0xEE, 0x00, 0x00, 0x00, 0x02, 0x87, 0x0B, 0x00, 0x01 if on else 0x00])
     return body + bytes([sum(body) % 256])
 
 

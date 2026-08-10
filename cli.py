@@ -6,6 +6,8 @@ Usage:
     python cli.py --once E8:EE:CC:00:00:01
     python cli.py --capture 60 E8:EE:CC:00:00:01
     python cli.py --set-charge-rate 200 E8:EE:CC:00:00:01
+    python cli.py --set-ac-output on E8:EE:CC:00:00:01
+    python cli.py --set-dc-output off E8:EE:CC:00:00:01
 """
 from __future__ import annotations
 
@@ -23,6 +25,8 @@ async def run(
     once: bool,
     capture: int | None,
     set_charge_rate: int | None = None,
+    set_ac_output: str | None = None,
+    set_dc_output: str | None = None,
 ) -> None:
     monitor = AnkerMonitor(address)
     if set_charge_rate is not None:
@@ -36,6 +40,31 @@ async def run(
                     ),
                     flush=True,
                 )
+                break
+        except ConnectionError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return
+        except KeyboardInterrupt:
+            pass
+        return
+    if set_ac_output is not None or set_dc_output is not None:
+        on = {"on": True, "off": False}
+        if set_ac_output is not None and set_ac_output not in on:
+            print("error: --set-ac-output must be 'on' or 'off'", file=sys.stderr)
+            return
+        if set_dc_output is not None and set_dc_output not in on:
+            print("error: --set-dc-output must be 'on' or 'off'", file=sys.stderr)
+            return
+        try:
+            async for t in monitor.stream():
+                result: dict = {"soc": t.soc}
+                if set_ac_output is not None:
+                    await monitor.set_ac_output(on[set_ac_output])
+                    result["ac_output"] = set_ac_output
+                if set_dc_output is not None:
+                    await monitor.set_dc_output(on[set_dc_output])
+                    result["dc_output"] = set_dc_output
+                print(json.dumps(result), flush=True)
                 break
         except ConnectionError as exc:
             print(f"error: {exc}", file=sys.stderr)
@@ -64,10 +93,15 @@ def main() -> int:
                         help="stop after N packets")
     parser.add_argument("--set-charge-rate", type=int, default=None, metavar="W",
                         help="set AC charge rate in watts (verified: 100, 200) and exit")
+    parser.add_argument("--set-ac-output", type=str, default=None, metavar="on|off",
+                        help="toggle AC output (app-captured payload; send CONTROL_QUERY first)")
+    parser.add_argument("--set-dc-output", type=str, default=None, metavar="on|off",
+                        help="toggle DC output (app-captured payload; send CONTROL_QUERY first)")
     args = parser.parse_args()
     try:
         asyncio.run(
-            run(args.address, args.once, args.capture, args.set_charge_rate)
+            run(args.address, args.once, args.capture, args.set_charge_rate,
+                args.set_ac_output, args.set_dc_output)
         )
     except KeyboardInterrupt:
         return 0

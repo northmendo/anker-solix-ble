@@ -131,6 +131,14 @@ class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
         """Set the AC charge rate in watts (verified: 100 / 200 on unit)."""
         await self._monitor.set_charge_rate(watts)
 
+    async def set_ac_output(self, on: bool) -> None:
+        """Turn the AC output on/off (app-captured cmd 0x86)."""
+        await self._monitor.set_ac_output(on)
+
+    async def set_dc_output(self, on: bool) -> None:
+        """Turn the DC output on/off (app-captured cmd 0x87)."""
+        await self._monitor.set_dc_output(on)
+
     async def async_shutdown(self) -> None:
         if self._task is not None:
             self._task.cancel()

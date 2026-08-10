@@ -43,6 +43,21 @@ def test_wake_query_prefix() -> None:
     assert WAKE_QUERY[:2] == bytes([0x08, 0xEE])
 
 
+def test_ac_dc_output_commands() -> None:
+    """AC/DC toggles match the app-captured payloads from btsnoop_hci-1.log."""
+    from anker_ble.protocol import CONTROL_QUERY, ac_output_command, dc_output_command
+
+    assert ac_output_command(True).hex() == "08ee00000002860b00018a"
+    assert ac_output_command(False).hex() == "08ee00000002860b000089"
+    assert dc_output_command(True).hex() == "08ee00000002870b00018b"
+    assert dc_output_command(False).hex() == "08ee00000002870b00008a"
+    assert CONTROL_QUERY.hex() == "08ee00000001020a0003"
+    for cmd in (ac_output_command(True), ac_output_command(False),
+                dc_output_command(True), dc_output_command(False), CONTROL_QUERY):
+        assert checksum(cmd) == cmd[-1], f"bad checksum for {cmd.hex()}"
+    print("ac/dc output + control query match app capture; checksums ok")
+
+
 def decode_file(path: str) -> tuple[int, int, int, int, int]:
     valid = bad = other = 0
     soc_min, soc_max = 101, -1
