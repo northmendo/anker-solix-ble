@@ -10,6 +10,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfPower
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -68,9 +69,29 @@ async def async_setup_entry(
 ) -> None:
     coordinator = hass.data["anker_solix_ble"][entry.entry_id]
     async_add_entities(
-        AnkerSensor(coordinator, entry, description)
-        for description in SENSORS
+        [AnkerSensor(coordinator, entry, description) for description in SENSORS]
+        + [AnkerMacSensor(entry)]
     )
+
+
+class AnkerMacSensor(SensorEntity):
+    """Diagnostic sensor exposing the BLE MAC (copy-paste from HA)."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:bluetooth"
+
+    def __init__(self, entry: ConfigEntry) -> None:
+        self._address = entry.data["address"]
+        self._attr_unique_id = f"{self._address}-mac"
+        self._attr_name = "MAC address"
+        self._attr_native_value = self._address
+        self._attr_device_info = {
+            "identifiers": {("anker_solix_ble", self._address)},
+            "name": entry.data.get("name", "Anker Power Station"),
+            "manufacturer": "Anker",
+            "model": entry.data.get("model", "SOLIX F1200 / 757 PowerHouse"),
+        }
 
 
 class AnkerSensor(CoordinatorEntity[AnkerDataUpdateCoordinator], SensorEntity):

@@ -15,7 +15,9 @@ for the full protocol write-up.
 - `custom_components/anker_solix_ble/` — Home Assistant integration (vendors
   the protocol lib; uses HA's native Bluetooth integration)
 - `scripts/seed-bluez-device.sh` — make BlueZ know a standby (non-advertising)
-  station so connect-by-address works (CLI path only)
+  station so connect-by-address works
+- `scripts/purge-bluez-device.sh` — remove a stuck device entry from BlueZ
+  (use when a device keeps being targeted after it should be forgotten)
 - `udev/` — udev rule to stop USB dongles from autosuspend-dropping the link
 - `docs/PROTOCOL.md` — reverse-engineered BLE protocol (GATT, field map,
   checksum, keep-alive + standby wake notes)
@@ -70,7 +72,8 @@ directory (or install via HACS as a local repository), restart HA, then:
    scan on` on the HA host)
 
 Sensors: Battery (%), AC output (W), Total output (W), AC input (W),
-DC input (W), Net power (W). All update at ~2 Hz over BLE, enabling
+DC input (W), Net power (W), plus a diagnostic **MAC address** sensor
+(copy-paste from HA). All update at ~2 Hz over BLE, enabling
 automations on power thresholds, SOC, etc.
 
 Control: a **Charge rate** select entity (100 W to 1000 W, 100 W steps,
