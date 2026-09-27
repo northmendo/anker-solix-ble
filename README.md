@@ -41,9 +41,13 @@ bluetoothd. It survives reboots. Without it you will see
 `Device ... not available` / `BleakDeviceNotFoundError` while the unit is in
 standby (it does not advertise, so scanning cannot find it either).
 
-**The HA integration does not need this step**: it connects through HA's
-own Bluetooth integration (see docs/ARCHITECTURE.md), which keeps scanning
-and resolves the device by address once it has ever been seen.
+**In Home Assistant this step is usually not needed**: the integration
+connects through HA's Bluetooth integration, which resolves the device by
+address from its own scan history, with a fallback to BlueZ's device store
+for standby units (added in 0.4.6). The exception is a unit that has *never*
+been seen since BlueZ last started — radio-silent standby means no
+advertisements, so nothing can discover it. Seeding BlueZ then (or waking
+the unit once) restores connect-by-address. The CLI always needs the seed.
 
 ## Quick start (CLI)
 
@@ -76,10 +80,14 @@ DC input (W), Net power (W), plus a diagnostic **MAC address** sensor
 (copy-paste from HA). All update at ~2 Hz over BLE, enabling
 automations on power thresholds, SOC, etc.
 
-Control: a **Charge rate** select entity (100 W to 1000 W, 100 W steps,
-optimistic) writes the AC charge rate to the unit — 100/200 W verified live.
-**AC output** and **DC output** switch entities use the app-captured toggle
-payloads (cmd `0x86`/`0x87`, ACKed by the unit; CONTROL_QUERY sent first).
+Control: a **Charge rate** select entity (100 W to 1000 W, 100 W steps)
+writes the AC charge rate to the unit — 100/200 W verified live. The unit
+does not report its rate back, so the entity reports `unknown` until a
+write succeeds in the current HA session and never invents a value (0.4.6;
+it used to default to `100`, which made automations verify a rate the unit
+was never told). **AC output** and **DC output** switch entities use the
+app-captured toggle payloads (cmd `0x86`/`0x87`, ACKed by the unit;
+CONTROL_QUERY sent first).
 
 Requires HA's Bluetooth integration to be enabled and a working BLE adapter
 on the HA host. The component refuses to start with a clear error if no
@@ -121,11 +129,24 @@ restores ~420W). Other control payloads (AC output toggle, light, etc.) are
 not yet reverse-engineered — the command characteristic accepts writes (same
 `08 EE` family) but their register map is undocumented; contributions welcome.
 
-Home Assistant integration: written against HA's native Bluetooth APIs
-(`bluetooth.async_ble_device_from_address` + `bleak_retry_connector`),
-compiles and unit-tested for vendored-lib sync, but the HA component itself
-has not been exercised end-to-end on a running HA instance by the author —
-please test in a staging install before relying on it.
+Home Assistant integration: exercised end-to-end on a live HA instance
+(sensors, charge-rate select, switches, standby recovery) as of 2026-09-27,
+including the failure modes that caused a real incident: a rate command to
+an unreachable unit aborting an automation, and a standby unit HA could not
+resolve. Both are handled in 0.4.6 (see docs/ARCHITECTURE.md). Entity
+values are only reported while telemetry is fresh; the rest of the control
+payloads still need on-unit verification.
+
+## Tests
+
+```bash
+python3 tests/run_all.py      # all modules, no pytest needed
+```
+
+The protocol and wiring tests need only the stdlib; `tests/test_ha_behavior.py`
+stubs the Home Assistant API surface and exercises the component code
+(select honesty, BlueZ standby fallback, stream supervision). With a venv
+(`.venv/bin/pip install -e '.[dev]'`) `pytest tests` also works.
 
 ## Disclaimer
 

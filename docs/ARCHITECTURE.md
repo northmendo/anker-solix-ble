@@ -32,9 +32,32 @@ subscribes/consumes and never opens or closes the connection itself —
 HA owns the BLE lifecycle, pools the adapter with other Bluetooth
 integrations, and retries natively.
 
-This is why the HA integration does **not** need the BlueZ seed script:
-HA's Bluetooth integration keeps scanning, so once the unit is ever seen
-it stays resolvable by address even in standby.
+HA's Bluetooth integration resolves the address from the advertisements it
+has seen, which covers the normal case. It cannot resolve a unit that has
+never advertised since BlueZ last started — a F1200 in standby is radio
+silent — so the coordinator falls back to BlueZ's device store
+(`anker_ble.monitor.bluez_device_from_address`) before giving up. The
+standalone CLI relies on the same resolution; seeding BlueZ
+(`scripts/seed-bluez-device.sh`) makes it permanent across restarts for
+both paths.
+
+### Field failure modes handled by the coordinator (0.4.6)
+
+Both were observed on a live install (2026-09-27):
+
+- **Standby unit, unresolvable address.** HA's registry returned nothing and
+  the integration retried forever while the unit sat in standby; a directed
+  connect through the BlueZ-resolved path recovers it. Fix: BlueZ fallback
+  in `_get_client()`.
+- **Died consumer loop.** An exception escaping the stream consumer left
+  every entity frozen until HA restarted the integration. Fix: `_run()` is a
+  supervised loop (log + restart after `STREAM_RESTART_DELAY`, 30 s).
+- **Dishonest rate entity.** The charge-rate select defaulted to `100`,
+  so automations that wrote a rate and then checked the entity state were
+  "verifying" a value the unit may never have received (the unit has no rate
+  readback). Fix: the select reports `unknown` until a write succeeds in the
+  current session, and a failed write leaves the state untouched. Automations
+  should gate charging safety on their own logic, not on this entity.
 
 ## Why not a raw BleakClient in HA
 

@@ -37,7 +37,7 @@ _LOGGER = logging.getLogger(__name__)
 WAKE_POLL_INTERVAL = 30.0
 
 
-async def _bluez_device_from_address(address: str) -> "Any | None":
+async def bluez_device_from_address(address: str) -> "Any | None":
     """Resolve a known BlueZ device without scanning.
 
     bleak >= 3 resolves ``BleakClient(address)`` by scanning, which misses
@@ -45,6 +45,10 @@ async def _bluez_device_from_address(address: str) -> "Any | None":
     ObjectManager (D-Bus) once seeded (scripts/seed-bluez-device.sh), and a
     BLEDevice with the known path connects directly. Returns a BLEDevice or
     None if BlueZ has no object for the address.
+
+    Also used by the Home Assistant coordinator as a fallback: HA's own
+    Bluetooth registry only resolves addresses it has seen advertising, and
+    a station in standby advertises nothing at all.
     """
     try:
         from dbus_fast.aio import MessageBus
@@ -184,7 +188,7 @@ class AnkerMonitor:
             # device object exists). Resolve the device from BlueZ's
             # ObjectManager (no scan) and connect via the known path.
             # This preserves connect-by-address for seeded standby units.
-            device = await _bluez_device_from_address(self.address)
+            device = await bluez_device_from_address(self.address)
             if device is None:
                 # BlueZ has no entry for this address either. If the unit is
                 # in standby it does not advertise, so a scan cannot find it

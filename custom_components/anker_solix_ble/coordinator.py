@@ -4,6 +4,16 @@ Uses HA's built-in Bluetooth integration (bluetooth.async_ble_device_from_addres
 plus bleak_retry_connector for connection management, instead of opening a raw
 BleakClient. This lets HA pool the BLE connection with other Bluetooth
 integrations and handles retries/backoff natively.
+
+Two failure modes are handled explicitly, both seen in the field:
+
+- A unit in standby stops advertising, so HA's Bluetooth registry cannot
+  resolve it (it only knows addresses it has seen in advertisements). The
+  coordinator then falls back to BlueZ's device store, which is what the
+  standalone CLI monitor does.
+- The consumer loop is supervised: if the monitor stream dies, the
+  coordinator logs it and starts a fresh stream instead of leaving the
+  integration frozen until the next HA restart.
 """
 from __future__ import annotations
 
@@ -17,14 +27,17 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.update_coordinator import (
-    DataUpdateCoordinator,
-    UpdateFailed,
-)
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .lib.anker_ble import Telemetry, AnkerMonitor
+from .lib.anker_ble import AnkerMonitor, Telemetry, bluez_device_from_address
 
 _LOGGER = logging.getLogger(__name__)
+
+# How long to wait before restarting the monitor stream if the consumer loop
+# itself dies. The monitor reconnects internally, so this only covers a crash
+# of the loop (otherwise the integration would silently stop updating until
+# the next HA restart).
+STREAM_RESTART_DELAY = 30.0
 
 
 class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
@@ -49,15 +62,18 @@ class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
         self._latest: Telemetry | None = None
         self._current_client: BleakClient | None = None
         self._last_packet: float = 0.0
+        self._closing = False
+        self._restart_delay = STREAM_RESTART_DELAY
         self.data = None
 
     async def _get_client(self) -> BleakClient | None:
         """Return an established connection, retrying as needed.
 
-        Uses HA's Bluetooth integration to resolve the address to a BLEDevice
-        (so it can connect even when the unit is not advertising, as long as
-        HA has ever seen it), then bleak_retry_connector for the connection
-        with backoff. This is the standard HA BLE pattern.
+        Uses HA's Bluetooth integration to resolve the address to a BLEDevice,
+        then bleak_retry_connector for the connection with backoff. HA only
+        resolves addresses it has *seen advertising*, so a unit sitting in
+        standby (radio silent) falls back to BlueZ's device store; see the
+        module docstring.
         """
         # Disconnect any previous client before establishing a new one:
         # the unit accepts only one connection at a time.
@@ -71,6 +87,20 @@ class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
         device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )
+        if device is None:
+            # HA's Bluetooth registry only resolves addresses it has seen
+            # advertising. A station in standby stops advertising entirely,
+            # so fall back to BlueZ's device store (D-Bus ObjectManager) and
+            # connect through the known path — the same resolution the
+            # standalone CLI monitor uses. Without this the integration
+            # retries forever while the unit sits in standby.
+            device = await bluez_device_from_address(self.address)
+            if device is not None:
+                _LOGGER.info(
+                    "device %s is not advertising; resolved it from the BlueZ "
+                    "device store instead",
+                    self.address,
+                )
         if device is None:
             # Not in HA's Bluetooth registry yet. HA keeps scanning, so it
             # may appear; the monitor retries on our behalf.
@@ -100,19 +130,32 @@ class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
             self._task = asyncio.create_task(self._run(), name="anker-ble-monitor")
 
     async def _run(self) -> None:
-        """Consume the monitor stream, pushing every packet into HA."""
-        try:
-            async for t in self._monitor.stream():
-                self._latest = t
-                self.data = t
-                self._last_packet = self.hass.loop.time()
-                self.async_set_updated_data(t)
-                await asyncio.sleep(0)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            _LOGGER.exception("monitor crashed")
-            raise UpdateFailed(f"BLE monitor failed: {exc}") from exc
+        """Consume the monitor stream, pushing every packet into HA.
+
+        Supervised: the monitor reconnects internally, so this loop only has
+        to cover a crash of the stream itself. Without the retry a died
+        stream would leave every entity frozen on its last value (or
+        unavailable) until the next HA restart.
+        """
+        while not self._closing:
+            try:
+                async for t in self._monitor.stream():
+                    self._latest = t
+                    self.data = t
+                    self._last_packet = self.hass.loop.time()
+                    self.async_set_updated_data(t)
+                    await asyncio.sleep(0)
+                # stream() only returns when the monitor was told to stop.
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - restart the stream on any crash
+                _LOGGER.exception(
+                    "BLE monitor for %s crashed; restarting in %.0fs",
+                    self.address,
+                    self._restart_delay,
+                )
+                await asyncio.sleep(self._restart_delay)
 
     def is_fresh(self, grace: float = 5.0) -> bool:
         """True while a telemetry packet arrived recently enough to trust.
@@ -140,6 +183,8 @@ class AnkerDataUpdateCoordinator(DataUpdateCoordinator[Telemetry | None]):
         await self._monitor.set_dc_output(on)
 
     async def async_shutdown(self) -> None:
+        self._closing = True
+        self._monitor.stop()
         if self._task is not None:
             self._task.cancel()
             try:

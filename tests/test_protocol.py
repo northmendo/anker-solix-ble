@@ -10,6 +10,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from anker_ble import WAKE_QUERY, charge_rate_command, checksum, decode
 
+# Committed fixture, portable on a fresh clone (safe to publish: the serial
+# is synthetic).
+FIXTURE = str(Path(__file__).resolve().parent / "fixtures" / "sample_telemetry.txt")
+
 
 def test_wake_query_checksum() -> None:
     """The wake query's last byte is the same sum % 256 checksum."""
@@ -82,7 +86,7 @@ def decode_file(path: str) -> tuple[int, int, int, int, int]:
     return valid, bad, other, soc_min, soc_max
 
 
-def test_checksums(path: str) -> None:
+def check_checksums(path: str) -> None:
     valid, bad, other, soc_min, soc_max = decode_file(path)
     print(f"{path}: {valid} telemetry (checksum ok), {other} other-type, {bad} bad")
     assert bad == 0, f"{bad} packets failed checksum"
@@ -90,7 +94,18 @@ def test_checksums(path: str) -> None:
     print(f"  SOC range seen: {soc_min}-{soc_max}")
 
 
-def test_known_packet(capture_path: str) -> None:
+def test_checksums() -> None:
+    """Every packet in the fixture checksums and decodes sanely.
+
+    (Named as a test, with no path argument, so pytest can collect it; pass
+    extra capture files to ``check_checksums`` from ``__main__`` instead.)
+    """
+    check_checksums(FIXTURE)
+
+
+def test_known_packet() -> None:
+    """First fixture packet matches the values verified against the display."""
+    capture_path = FIXTURE
     # First real packet from the 2026-08-09 capture (verified vs display).
     with open(capture_path) as fh:
         for line in fh:
@@ -114,9 +129,8 @@ if __name__ == "__main__":
     # Default: committed fixture (portable on fresh clone). Optional args:
     # one or more full capture files to validate against (e.g. the original
     # ../capture_long_223854.txt kept locally out of git).
-    fixture = str(Path(__file__).resolve().parent / "fixtures" / "sample_telemetry.txt")
-    test_known_packet(fixture)
-    test_checksums(fixture)
+    test_known_packet()
+    test_checksums()
     for arg in sys.argv[1:]:
-        test_checksums(arg)
+        check_checksums(arg)
     print("ALL TESTS PASSED")

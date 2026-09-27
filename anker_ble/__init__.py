@@ -1,5 +1,5 @@
 """Anker SOLIX F1200 / 757 PowerHouse BLE monitoring library."""
-from .monitor import AnkerMonitor, WAKE_POLL_INTERVAL
+from .monitor import AnkerMonitor, WAKE_POLL_INTERVAL, bluez_device_from_address
 from .protocol import (
     CHAR_COMMAND,
     CHAR_NOTIFY,
@@ -18,6 +18,7 @@ from .protocol import (
 __all__ = [
     "AnkerMonitor",
     "WAKE_POLL_INTERVAL",
+    "bluez_device_from_address",
     "Telemetry",
     "decode",
     "checksum",
@@ -31,4 +32,4 @@ __all__ = [
     "CHAR_NOTIFY",
     "CHAR_COMMAND",
 ]
-__version__ = "0.4.5"
+__version__ = "0.4.6"
